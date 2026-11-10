@@ -109,6 +109,28 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:100;backgrou
 .obs-field:focus{border-color:var(--bad)}
 .obs-field.visible{display:block}
 
+/* FOTOS (itens NC) */
+.foto-box{display:none;margin:8px 0 2px;padding:10px 12px;border:1.5px dashed var(--bad);border-radius:10px;background:var(--s)}
+.foto-box.visible{display:block}
+.foto-acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn-foto{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;border:1.5px solid var(--bad);background:var(--bad);color:#fff;font-weight:600;font-size:.8rem;cursor:pointer}
+.btn-foto.sec{background:var(--s);color:var(--bad)}
+.btn-foto:hover{filter:brightness(1.06)}
+.btn-foto svg{width:16px;height:16px;flex-shrink:0}
+.foto-hint{font-size:.72rem;color:var(--m)}
+.foto-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.foto-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.foto-grid:empty{display:none}
+.foto-thumb{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--l);background:var(--s2)}
+.foto-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.foto-del{position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:.9rem;line-height:1;cursor:pointer;display:grid;place-items:center}
+.nc-item-fotos{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.nc-item-fotos img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--l);cursor:zoom-in}
+.foto-viewer{display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.88);align-items:center;justify-content:center;padding:20px}
+.foto-viewer.open{display:flex}
+.foto-viewer img{max-width:100%;max-height:100%;border-radius:8px}
+.btn-export.sec{background:var(--s);color:var(--g);border:1.5px solid var(--g);margin-top:10px}
+
 /* PAINEL DE PONTUAÇÃO */
 .score-panel{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:200;background:var(--pk);color:#fff;border-radius:16px;padding:16px 18px;min-width:220px;box-shadow:0 10px 30px rgba(0,40,28,.3);border-top:4px solid var(--a)}
 .score-panel h3{font-size:.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--a);margin:0 0 10px}
@@ -155,7 +177,8 @@ footer.rodape{max-width:960px;margin:0 auto;padding:0 20px 24px;font-size:.72rem
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
 @media print{
-  header.top .btn-print,.prog,.score-panel,.section-nav,.toast{display:none!important}
+  header.top .btn-print,.prog,.score-panel,.section-nav,.toast,.foto-acoes,.foto-del{display:none!important}
+  .foto-box{border:0;padding:0}
   header.top{position:static}
   .section-body{display:block!important}
   .section-card{break-inside:avoid}
@@ -440,11 +463,13 @@ footer.rodape{max-width:960px;margin:0 auto;padding:0 20px 24px;font-size:.72rem
       <button class="modal-close" onclick="fecharModal()" aria-label="Fechar">✕</button>
     </div>
     <div id="modal-content"></div>
-    <button class="btn-export" onclick="exportarRelatorio()">Copiar relatório (texto)</button>
+    <button class="btn-export" onclick="baixarRelatorioComFotos()">Baixar relatório com fotos</button>
+    <button class="btn-export sec" onclick="exportarRelatorio()">Copiar relatório (texto)</button>
   </div>
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<div class="foto-viewer" id="foto-viewer" onclick="fecharFoto()" role="dialog" aria-label="Visualizar foto"><img alt="Foto ampliada"></div>
 
 <script>
 // =====================================================
@@ -692,6 +717,22 @@ function renderItem(item) {
       </div>
     </div>
     <textarea class="obs-field" id="obs-${item.id}" placeholder="Observação (opcional)…" rows="2"></textarea>
+    <div class="foto-box" id="foto-box-${item.id}">
+      <div class="foto-acoes">
+        <label class="btn-foto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          Tirar foto
+          <input class="foto-input" type="file" accept="image/*" capture="environment" onchange="addFotos('${item.id}', this)">
+        </label>
+        <label class="btn-foto sec">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
+          Galeria
+          <input class="foto-input" type="file" accept="image/*" multiple onchange="addFotos('${item.id}', this)">
+        </label>
+        <span class="foto-hint" id="foto-hint-${item.id}">Evidência da não conformidade (até ${MAX_FOTOS} fotos)</span>
+      </div>
+      <div class="foto-grid" id="foto-grid-${item.id}"></div>
+    </div>
   `;
 }
 
@@ -735,15 +776,87 @@ function onItemChange(id) {
   row.className = 'item-row';
   if (selected) {
     row.classList.add(selected.value);
+    const fotoBox = document.getElementById(`foto-box-${id}`);
     if (selected.value === 'nc') {
       obs.classList.add('visible');
+      fotoBox.classList.add('visible');
     } else {
       obs.classList.remove('visible');
+      fotoBox.classList.remove('visible');
     }
   }
   updateScore();
   updateSectionBadges();
 }
+
+// =====================================================
+// FOTOS (somente itens NC)
+// Fotos ficam só na memória da página; recarregar apaga.
+// =====================================================
+const MAX_FOTOS = 4;
+const FOTO_MAX_LADO = 1280;   // px, lado maior após compressão
+const FOTO_QUALIDADE = 0.72;  // JPEG
+const FOTOS = {};             // { itemId: [dataURL, ...] }
+
+function comprimirFoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let { width: w, height: h } = img;
+      const esc = Math.min(1, FOTO_MAX_LADO / Math.max(w, h));
+      w = Math.round(w * esc); h = Math.round(h * esc);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', FOTO_QUALIDADE));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Imagem inválida')); };
+    img.src = url;
+  });
+}
+
+async function addFotos(id, input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const lista = FOTOS[id] || (FOTOS[id] = []);
+  const vagas = MAX_FOTOS - lista.length;
+  if (vagas <= 0) { toast(`Limite de ${MAX_FOTOS} fotos por item.`); return; }
+  if (files.length > vagas) toast(`Apenas ${vagas} foto(s) adicionada(s): limite de ${MAX_FOTOS} por item.`);
+  for (const f of files.slice(0, vagas)) {
+    try { lista.push(await comprimirFoto(f)); }
+    catch (e) { toast('Não foi possível ler uma das imagens.'); }
+  }
+  renderFotos(id);
+}
+
+function removerFoto(id, idx) {
+  if (!FOTOS[id]) return;
+  FOTOS[id].splice(idx, 1);
+  renderFotos(id);
+}
+
+function renderFotos(id) {
+  const grid = document.getElementById(`foto-grid-${id}`);
+  const lista = FOTOS[id] || [];
+  grid.innerHTML = lista.map((src, i) => `
+    <div class="foto-thumb">
+      <img src="${src}" alt="Foto ${i + 1} da não conformidade" onclick="abrirFoto(this.src)">
+      <button type="button" class="foto-del" aria-label="Remover foto ${i + 1}" onclick="removerFoto('${id}', ${i})">×</button>
+    </div>`).join('');
+  document.getElementById(`foto-hint-${id}`).textContent = lista.length
+    ? `${lista.length} de ${MAX_FOTOS} foto(s)`
+    : `Evidência da não conformidade (até ${MAX_FOTOS} fotos)`;
+}
+
+function abrirFoto(src) {
+  const v = document.getElementById('foto-viewer');
+  v.querySelector('img').src = src;
+  v.classList.add('open');
+}
+function fecharFoto() { document.getElementById('foto-viewer').classList.remove('open'); }
 
 // =====================================================
 // SCORE
@@ -825,7 +938,7 @@ function gerarRelatorio() {
     else if (sel.value === 'nc') {
       nc++;
       const obs = document.getElementById(`obs-${item.id}`).value;
-      ncItems.push({ label: item.label, code: item.code, obs, crit: item.crit });
+      ncItems.push({ label: item.label, code: item.code, obs, crit: item.crit, fotos: FOTOS[item.id] || [] });
     }
     else if (sel.value === 'na') na++;
   });
@@ -848,6 +961,7 @@ function gerarRelatorio() {
           <div class="nc-item-title">${i.crit ? '<span class="crit-badge">Crítico</span> ' : ''}${i.label}</div>
           <div class="nc-item-code">${i.code}</div>
           ${i.obs ? `<div class="nc-item-obs">Observação: ${i.obs}</div>` : ''}
+          ${i.fotos.length ? `<div class="nc-item-fotos">${i.fotos.map((f, n) => `<img src="${f}" alt="Foto ${n + 1}" onclick="abrirFoto(this.src)">`).join('')}</div>` : ''}
         </div>
       `).join('')}
     </div>`;
@@ -894,7 +1008,7 @@ function exportarRelatorio() {
     else if (sel.value === 'nc') {
       nc++;
       const obs = document.getElementById(`obs-${item.id}`).value;
-      ncItems.push({ label: item.label, code: item.code, obs, crit: item.crit });
+      ncItems.push({ label: item.label, code: item.code, obs, crit: item.crit, fotos: FOTOS[item.id] || [] });
     }
     else if (sel.value === 'na') na++;
   });
@@ -920,6 +1034,7 @@ function exportarRelatorio() {
       txt += `\n${idx + 1}. ${i.crit ? '[CRÍTICO] ' : ''}${i.label}\n`;
       txt += `   Código: ${i.code}\n`;
       if (i.obs) txt += `   Observação: ${i.obs}\n`;
+      if (i.fotos.length) txt += `   Fotos: ${i.fotos.length} (ver relatório com fotos)\n`;
     });
   } else {
     txt += `Nenhuma não conformidade registrada.\n`;
@@ -941,6 +1056,30 @@ function exportarRelatorio() {
   } else { fallback(); }
 }
 
+function baixarRelatorioComFotos() {
+  const conteudo = document.getElementById('modal-content').innerHTML;
+  const unidade = document.getElementById('meta-unidade').value || 'unidade';
+  const data = document.getElementById('meta-data').value || '';
+  const css = document.querySelector('style').textContent;
+  const doc = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatório de Auditoria · ${unidade} · ${data}</title>
+<style>${css}
+body{padding:24px}.wrap{max-width:760px;margin:0 auto}
+.nc-item-fotos img{width:200px;height:200px;cursor:default}
+@media print{.nc-item{break-inside:avoid}}</style></head>
+<body><div class="wrap"><h2 style="color:var(--g);margin:0 0 16px">Relatório de Auditoria · Espaço Fácil</h2>${conteudo}</div></body></html>`;
+  const nome = `Auditoria_${unidade.replace(/[^\wÀ-ú]+/g, '_')}_${data}.html`;
+  const blob = new Blob([doc], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Relatório com fotos baixado.');
+}
+
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -953,6 +1092,7 @@ function toast(msg) {
 document.getElementById('modal').addEventListener('click', function(e) {
   if (e.target === this) fecharModal();
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharFoto(); });
 
 // =====================================================
 // BOOT
